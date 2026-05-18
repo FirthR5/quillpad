@@ -25,3 +25,20 @@ data class SyncNote(
     val favorite: Boolean? = null,
     val readOnly: Boolean = false,
 )
+
+/*
+* Detect if all lines in the note content are task list items.
+* Very useful for Markdown Local Notes sync.
+*
+* Example of task list items:
+* - [] Task 1
+* - [x] Task 2
+* */
+fun SyncNote.markdownNoteIsTaskList(): Boolean {
+    if (content == null) return false
+
+    val regex = Regex("""^\s*[-+*]\s*\[([ xX])]\s*(.*)$""")
+    return content.lines().all { line ->
+        line.isBlank() || regex.matches(line)
+    }
+}
