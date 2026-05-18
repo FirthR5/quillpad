@@ -25,6 +25,7 @@ import org.qosp.notes.data.sync.core.Success
 import org.qosp.notes.data.sync.core.SyncMethod
 import org.qosp.notes.data.sync.core.SyncNotesResult
 import org.qosp.notes.data.sync.core.SynchronizeNotes
+import org.qosp.notes.data.sync.core.markdownNoteIsTaskList
 import org.qosp.notes.data.sync.getMapping
 import org.qosp.notes.data.sync.toLocalNote
 import org.qosp.notes.data.sync.updateLocalNote
@@ -111,17 +112,25 @@ class NoteRepositoryImpl(
                 when (action) {
                     is NoteAction.Create -> {
                         val syncNote = action.remoteNote
-                        val noteId = insertNote(syncNote.toLocalNote(defaultPinned = false), sync = false)
+                        val localNote = syncNote.toLocalNote(defaultPinned = false)
+                        val noteToInsert = if (localNote.markdownNoteIsTaskList()) {
+                            localNote.copy(content = "", isList = true,
+                                taskList = localNote.mdToTaskList(localNote.content),
+                            )
+                        } else {
+                            localNote
+                        }
+                        val noteId = insertNote(noteToInsert, sync = false)
                         idMappingDao.insert(syncNote.getMapping(noteId, syncProvider.type))
                     }
 
                     is NoteAction.Update -> {
-                        val mergedNote = action.remoteNote.updateLocalNote(action.note)
-                        val note = if (action.note.isList) {
+                        val note = if (action.note.isList || action.remoteNote.markdownNoteIsTaskList() ) {
+                            val mergedNote = action.remoteNote.updateLocalNote(action.note)
                             val tasks = mergedNote.mdToTaskList(mergedNote.content)
                             mergedNote.copy(content = "", taskList = tasks, isList = true)
                         } else {
-                            mergedNote
+                            action.remoteNote.updateLocalNote(action.note)
                         }
                         idMappingDao.updateNoteExtras(
                             localId = action.note.id,

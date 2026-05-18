@@ -99,23 +99,63 @@ data class Note(
     fun stringToTaskList(): List<NoteTask> {
         var nextId = 0L
 
-        return content
-            .lines()
-            .map { NoteTask(nextId++, it.trim(), false) }
+        if (markdownNoteIsTaskList()){
+            val regex = Regex("""^\s*[-+*]\s*\[([ xX])]\s*(.*)$""")
+            return content.lineSequence().mapNotNull { line ->
+                val match = regex.matchEntire(line)
+                if (match != null) {
+                    NoteTask(
+                        id = nextId++,
+                        content = match.groupValues[2],
+                        isDone = match.groupValues[1].equals("x", ignoreCase = true)
+                    )
+                } else null
+            }.toList()
+        }
+        else {
+            return content
+                .lines()
+                .map { NoteTask(nextId++, it.trim(), false) }
+        }
+    }
+
+    /*
+    * Detect if all lines in the note content are task list items.
+    * Very useful for Markdown Local Notes sync.
+    *
+    * Example of task list items:
+    * - [] Task 1
+    * - [x] Task 2
+    * */
+    fun markdownNoteIsTaskList(): Boolean {
+        if (content.isBlank()) return false
+
+        val regex = Regex("""^\s*[-+*]\s*\[([ xX])]\s*(.*)$""")
+        return content.lines().all { line ->
+            line.isBlank() || regex.matches(line)
+        }
     }
 
     fun mdToTaskList(content: String): List<NoteTask> {
-        val regex = Regex("^\\s*[-+*] *\\[([ xX])](.*)$")
+        val regex = Regex("""^\s*[-+*]\s*\[([ xX])]\s*(.*)$""")
         val tasks = mutableListOf<NoteTask>()
-        content.lines().forEachIndexed { index, line ->
-            val result = regex.find(line)
-            val task = result?.let {
-                val checked = it.groupValues[1].lowercase() == "x"
-                NoteTask(id = index.toLong(), content = it.groupValues[2].trim(), isDone = checked)
-            } ?: tasks.removeLastOrNull()?.let { t -> t.copy(content = t.content + line.trim()) }
-            task?.let { tasks.add(it) }
+        content.lineSequence().forEach { line ->
+            val match = regex.matchEntire(line)
+
+            if (match != null) {
+                tasks += NoteTask(
+                    id = tasks.size.toLong(),
+                    content = match.groupValues[2],
+                    isDone = match.groupValues[1].equals("x", ignoreCase = true)
+                )
+            } else if (tasks.isNotEmpty()) {
+                val last = tasks.last()
+                tasks[tasks.lastIndex] = last.copy(
+                    content = last.content + "\n" + line
+                )
+            }
         }
-        return tasks.toList()
+        return tasks
     }
 
     fun toStorableContent(): String {
